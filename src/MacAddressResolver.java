@@ -18,7 +18,7 @@ public class MacAddressResolver {
     private static MacAddress resolvedMacAddress;
 
 
-    public static MacAddress resolveMacAddress(InetAddress ipAddress) throws PcapNativeException, UnknownHostException, NotOpenException {
+    public static MacAddress resolveMacAddress(InetAddress ipAddress) {
 
         PcapNetworkInterface networkInterface;
 
@@ -34,8 +34,15 @@ public class MacAddressResolver {
             return null;
         }
 
-        PcapHandle handle = networkInterface.openLive(65536, PcapNetworkInterface.PromiscuousMode.PROMISCUOUS, 10);
-        PcapHandle sendHandle = networkInterface.openLive(65536, PcapNetworkInterface.PromiscuousMode.PROMISCUOUS, 10);
+        PcapHandle handle = null;
+        PcapHandle sendHandle = null;
+        try {
+            handle = networkInterface.openLive(65536, PcapNetworkInterface.PromiscuousMode.PROMISCUOUS, 10);
+            sendHandle = networkInterface.openLive(65536, PcapNetworkInterface.PromiscuousMode.PROMISCUOUS, 10);
+
+        } catch (PcapNativeException e) {
+            throw new RuntimeException(e);
+        }
 
         ExecutorService pool = Executors.newSingleThreadExecutor();
         Future<MacAddress> future = pool.submit(new ARPReplyListen(handle, ipAddress));
@@ -43,8 +50,16 @@ public class MacAddressResolver {
         MacAddress sourceMac = MacAddress.getByAddress(networkInterface.getLinkLayerAddresses().getFirst().getAddress());
         MacAddress destinationMac = MacAddress.getByName("ff:ff:ff:ff:ff:ff");
 
-        InetAddress sourceIP = InetAddress.getByAddress(networkInterface.getAddresses().getFirst().getAddress().getAddress());
-        InetAddress destinationIP = InetAddress.getByAddress(ipAddress.getAddress());
+        InetAddress sourceIP = null;
+        InetAddress destinationIP = null;
+        try {
+            sourceIP = InetAddress.getByAddress(networkInterface.getAddresses().getFirst().getAddress().getAddress());
+            destinationIP = InetAddress.getByAddress(ipAddress.getAddress());
+        } catch (UnknownHostException e) {
+            System.out.println(e.getMessage());
+            e.printStackTrace();
+        }
+
 
 
         ArpPacket.Builder arpRequest = new ArpPacket.Builder();
@@ -73,7 +88,14 @@ public class MacAddressResolver {
 
         System.out.println(requestPacket);
 
-        sendHandle.sendPacket(requestPacket);
+        try {
+            sendHandle.sendPacket(requestPacket);
+        } catch (NotOpenException e) {
+            System.out.println(e.getMessage());
+            e.printStackTrace();
+        } catch (PcapNativeException e) {
+            throw new RuntimeException(e);
+        }
 
         try {
             resolvedMacAddress = future.get(10, TimeUnit.SECONDS);
