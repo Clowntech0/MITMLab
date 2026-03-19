@@ -30,8 +30,12 @@ public class MITM{
 
         //SendArpRequestTemplate.run(s);
 
+        MacAddress resolved = ARP.resolveMacFromIP("192.168.0.104");
 
+        System.out.println("RESOLVED ADDRESS: " + resolved.getAddress().toString());
+    }
 
+    private static void sendSPoofedArp() throws PcapNativeException, UnknownHostException, NotOpenException {
         PcapNetworkInterface networkInterface = null;
 
         List<PcapNetworkInterface> networkInterfaces = Pcaps.findAllDevs();

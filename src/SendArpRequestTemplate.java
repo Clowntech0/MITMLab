@@ -26,14 +26,14 @@ public class SendArpRequestTemplate {
     private static final String SNAPLEN_KEY = SendArpRequestTemplate.class.getName() + ".snaplen";
     private static final int SNAPLEN = Integer.getInteger(SNAPLEN_KEY, 65536); // [bytes]
 
-    private static final MacAddress SRC_MAC_ADDR = MacAddress.getByName("fe:00:01:02:03:04");
+    private static final MacAddress SRC_MAC_ADDR = MacAddress.getByName("24:4b:fe:5e:2d:6d");
 
     private static MacAddress resolvedAddr;
 
     private SendArpRequestTemplate() {}
 
     public static void run(String[] args) throws PcapNativeException, NotOpenException {
-        String strSrcIpAddress = "192.0.2.100"; // for InetAddress.getByName()
+        String strSrcIpAddress = "192.168.0.171"; // for InetAddress.getByName()
         String strDstIpAddress = args[0]; // for InetAddress.getByName()
 
         System.out.println(COUNT_KEY + ": " + COUNT);
