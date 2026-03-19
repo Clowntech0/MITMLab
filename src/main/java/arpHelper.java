@@ -8,7 +8,6 @@ import org.pcap4j.util.ByteArrays;
 import org.pcap4j.util.MacAddress;
 
 import java.net.InetAddress;
-import java.net.UnknownHostException;
 
 public class arpHelper {
 
