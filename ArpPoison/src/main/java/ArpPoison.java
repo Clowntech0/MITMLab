@@ -1,6 +1,7 @@
-package main.java;
-
-import org.pcap4j.core.*;
+import org.pcap4j.core.NotOpenException;
+import org.pcap4j.core.PcapHandle;
+import org.pcap4j.core.PcapNativeException;
+import org.pcap4j.core.PcapNetworkInterface;
 import org.pcap4j.packet.Packet;
 import org.pcap4j.packet.namednumber.ArpOperation;
 import org.pcap4j.util.MacAddress;
@@ -9,9 +10,7 @@ import java.io.IOException;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 
-public class MITM{
-
-    //built based off sendarprequest sample https://github.com/kaitoy/pcap4j/blob/v1/pcap4j-sample/src/main/java/org/pcap4j/sample/SendArpRequest.java
+public class ArpPoison {
 
     public static void main(String[] args) throws PcapNativeException, IOException, NotOpenException {
         //temporary fix to force pcap4j to use Npcap instead of wpcap

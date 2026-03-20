@@ -1,5 +1,3 @@
-package main.java;
-
 import org.pcap4j.core.*;
 import org.pcap4j.packet.ArpPacket;
 import org.pcap4j.packet.EthernetPacket;

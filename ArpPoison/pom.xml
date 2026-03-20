@@ -3,60 +3,20 @@
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>net.clowntech</groupId>
+        <artifactId>MITMLab</artifactId>
+        <version>0.1</version>
+    </parent>
 
-    <groupId>net.clowntech</groupId>
-    <artifactId>MITMLab</artifactId>
-    <version>0.1</version>
-    <packaging>pom</packaging>
-    <name>MITM Lab</name>
-    <modules>
-        <module>ArpPoison</module>
-        <module>ICMPPoison</module>
-    </modules>
-
-
-    <dependencies>
-        <dependency>
-            <groupId>org.pcap4j</groupId>
-            <artifactId>pcap4j-core</artifactId>
-            <version>1.8.2</version>
-        </dependency>
-        <dependency>
-            <groupId>org.pcap4j</groupId>
-            <artifactId>pcap4j-packetfactory-static</artifactId>
-            <version>1.8.2</version>
-        </dependency>
-
-        <dependency>
-            <groupId> org.apache.cassandra</groupId>
-            <artifactId>cassandra-all</artifactId>
-            <version>5.0.3</version>
-
-            <exclusions>
-                <exclusion>
-                    <groupId>org.slf4j</groupId>
-                    <artifactId>slf4j-log4j12</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>log4j</groupId>
-                    <artifactId>log4j</artifactId>
-                </exclusion>
-            </exclusions>
-
-        </dependency>
-
-        <dependency>
-            <groupId>org.slf4j</groupId>
-            <artifactId>slf4j-nop</artifactId>
-            <version>2.0.17</version>
-        </dependency>
-    </dependencies>
+    <artifactId>ArpPoison</artifactId>
 
     <properties>
         <maven.compiler.source>21</maven.compiler.source>
         <maven.compiler.target>21</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
+
 
     <build>
         <plugins>
@@ -66,7 +26,7 @@
                 <configuration>
                     <archive>
                         <manifest>
-                            <mainClass>MITM</mainClass> <!-- Specify your main class -->
+                            <mainClass>ArpPoison</mainClass> <!-- Specify your main class -->
                         </manifest>
                     </archive>
                     <descriptorRefs>
@@ -85,6 +45,5 @@
             </plugin>
         </plugins>
     </build>
+
 </project>
-
-
