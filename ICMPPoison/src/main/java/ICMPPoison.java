@@ -152,8 +152,6 @@ public class ICMPPoison {
             }
             handle.close();
         }
-
-        PcapHandle.
     }
 
     public static void posionICMP(PcapNetworkInterface networkInterface){
